@@ -44,6 +44,7 @@ public class MapSpiral {
 			throw new RuntimeException(e);
 		}
 	}
+	private static int chainOptimizationSize = 7;
 
 	private static class ChainCandidate {
 		private Chain chain;
@@ -207,8 +208,9 @@ public class MapSpiral {
 		 * @param chance
 		 * @param amount
 		 * @param random
+		 * @throws InterruptedException 
 		 */
-		public Chain(Chain chain, double fraction, Random random) {
+		public Chain(Chain chain, double fraction, Random random) throws InterruptedException {
 			int toRemove = (int) (chain.linksPerSite.size() * fraction + 1);
 			int holes = random.nextInt(5) + 1;
 			int amountPerHole = (toRemove / holes * 2 + 1);
@@ -241,8 +243,9 @@ public class MapSpiral {
 		 * Forcefully append the site in the last point of the chain.
 		 * 
 		 * @param site
+		 * @throws InterruptedException 
 		 */
-		public Link append(Site site) {
+		public Link append(Site site) throws InterruptedException {
 
 			if (linksPerSite.containsKey(site)) {
 				return linksPerSite.get(site);
@@ -265,6 +268,7 @@ public class MapSpiral {
 				}
 			}
 			linksPerSite.put(site, resultLink);
+			optimize(site);
 			return resultLink;
 		}
 
@@ -277,6 +281,7 @@ public class MapSpiral {
 		 */
 		public boolean add(Site site) throws InterruptedException {
 			dirty();
+			try {
 			if (linksPerSite.containsKey(site)) {
 				return false;
 			}
@@ -295,7 +300,109 @@ public class MapSpiral {
 					return false;
 				}
 			}
+			} finally {
+				optimize(site);
+			}
 
+		}
+
+		/**
+		 * make small local optimizations around a site.  
+		 * @throws InterruptedException 
+		 */
+		private void optimize(Site site) throws InterruptedException {
+			 
+			if(linksPerSite.size() > chainOptimizationSize) {
+				Link centralLink = linksPerSite.get(site);
+				
+				Link startLink = centralLink;
+				for(int i=0; i < chainOptimizationSize/2;++i) {
+					startLink = startLink.previous;
+				}
+				Link previousInsertion = startLink.previous;
+				LinkedList<Site> originalSnippet = new LinkedList<Site>();
+				Link currentLink = startLink;
+				while(originalSnippet.size() < chainOptimizationSize) {
+					originalSnippet.add(currentLink.site);
+					currentLink = currentLink.next;
+				}
+				Link nextInsertion = currentLink;
+
+				boolean changed = false;
+				do {
+					originalSnippet.add(currentLink.site);
+					currentLink = currentLink.next;
+				} while(currentLink != nextInsertion);
+				LinkedList<Site> best = new LinkedList<Site>();
+				LinkedList<Site> candidate = new LinkedList<Site>();
+				LinkedList<Site> remaining = new LinkedList<Site>();
+				best.addAll(originalSnippet);
+				double bestDistance = snippetDistance(previousInsertion,originalSnippet,nextInsertion);
+				int[] counters = new int[chainOptimizationSize-1];
+				counters[0]=-1;
+				EVALUATE_ALL_POSSIBILITIES: while(true) {
+					double candidateDistance = 0;
+					candidate.clear();
+					remaining.clear();
+					remaining.addAll(originalSnippet);
+					int i=0;
+					int max = chainOptimizationSize-1;
+					do {
+						counters[i] = counters[i]+1;
+						if(counters[i] > max) {
+							counters[i]=0;
+							i=i+1;
+							max=max-1;
+						} else {
+							break;
+						}
+					} while( i < counters.length);
+					if(i == counters.length) {
+						break;
+					}
+					Site previous = previousInsertion.site;
+					for(i=0; i < counters.length;++i) {
+						Site current = remaining.remove(counters[i]);
+						candidate.add(current);
+						candidateDistance += previous.distance(current, true);
+						if(candidateDistance > bestDistance ) {
+							continue EVALUATE_ALL_POSSIBILITIES;
+						}
+					}
+					candidateDistance += candidate.getLast().distance(nextInsertion.site,true);
+					if(candidateDistance < bestDistance) {
+						double repCandidateDistance = candidateDistance;
+						double repBestDistance=  bestDistance;
+						report(()-> "found better order: from\n " + best + " to \n" + candidate + "\n we have a distance economy from " + repBestDistance + " to " + repCandidateDistance);
+						best.clear();
+						best.addAll(candidate);
+						bestDistance = candidateDistance;
+						changed=true;
+					}
+				}
+				if(changed) {
+					Link current= previousInsertion;
+					for(Site s: best) {
+						Link prev = current;
+						current = linksPerSite.get(s);
+						prev.next= current;
+						current.previous = prev;
+					}
+					current.next = nextInsertion;
+					nextInsertion.previous = current;
+					dirty();
+				}
+			}
+		}
+
+		private double snippetDistance(Link previousInsertion, LinkedList<Site> snippet, Link nextInsertion) throws InterruptedException {
+			Site previous = previousInsertion.site;
+			double total = 0;
+			for(Site x: snippet) {
+				total += previous.distance(x, true);
+			}
+			total = total + snippet.getLast().distance(nextInsertion.site,true);
+			return total;
 		}
 
 		private void dirty() {
@@ -805,6 +912,7 @@ public class MapSpiral {
 	}
 
 	public static void main(String[] args) throws Exception {
+		
 		File f = new File("D:\\SteamLibrary\\steamapps\\common\\LowMagicAge\\wlds\\wld_1_sites.txt");
 		// wsites v1 329 // id type img_var img_flip x y[ en_name,cs_name]
 
@@ -823,6 +931,8 @@ public class MapSpiral {
 					}
 				}
 			} while (line != null);
+			
+			
 			long end = System.currentTimeMillis() + 1800000l;
 
 			ChainCandidate bestChain = new ChainCandidate();
