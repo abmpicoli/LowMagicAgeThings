@@ -957,22 +957,29 @@ public class CharSort {
 			for (ATTRIBUTE x : ATTRIBUTE.values()) {
 				int atrResult = ((extraAttribute == x ? 2 : 0) + race.attributes.get(x) + attributes.get(x).get());
 				int atrResult2 = atrResult + sr.nextInt(10);
-				out.printf("%02d - %02d\n",atrResult,atrResult2);
+				out.printf("%02d\t%02d\n",atrResult,atrResult2);
 			}
 			out.println("Feat goals: ");
-			List<String> feats = new ArrayList<>();
+			Set<String> feats = new LinkedHashSet<>();
 			ChanceMap<Feat> featChances = new ChanceMap<>();
 			for(Entry<CharClass, Double> x : theClassWeights.entrySet()) {
 				featChances.addAll(x.getKey().featChances, x.getValue());
 			}
-			while (feats.size() < 80) {
+			while (feats.size() < FEATS.length) {
 				Feat feat = featChances.random(sr);
-				String theFeat = feat.name;
-				feats.add(theFeat);
-				featChances.add(feat, -featChances.chance(feat)*0.25);
+				if(feat != null) {
+					String theFeat = feat.name;
+					feats.add(theFeat);
+					featChances.add(feat, -10000.0);
+				} else {
+					break;
+				}
 			}
+			double count=0;
+			out.printf("Skip delay\t%5.3f\n",sr.nextDouble()*5+sr.nextDouble()*5+1);
 			for (String feat : feats) {
-				out.println("  >" + feat);
+				count = count + sr.nextDouble()+0.5;
+				out.printf("%5.2f\t0\t%s\n",count,feat);
 			}
 			soFar.add(sw.toString());
 		}

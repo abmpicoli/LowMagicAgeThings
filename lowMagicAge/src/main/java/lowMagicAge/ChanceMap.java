@@ -49,7 +49,6 @@ class ChanceMap<T> {
 		if(resetList != null && getMax()==0) {
 			addAll(resetList,resetValue);
 		}
-		//System.out.println(this);
 	}
 
 	private void internalAdd(T entry, double value) {
